@@ -52,11 +52,16 @@ object Eq:
       case p: Mirror.ProductOf[T] => eqProduct(p, elemInstances)
 end Eq
 
+case class Tail[+T](ts: Lst[T])
+
+// compilation fails with:
+// [error] No given instance of type Eq[Tail[T]] was found
+// [error] enum Lst[+T] derives Eq:
 enum Lst[+T] derives Eq:
-  case Cns(t: T, ts: Lst[T])
+  case Cns(t: T, tail: Tail[T])
   case Nl
 
-extension [T](t: T) def ::(ts: Lst[T]): Lst[T] = Lst.Cns(t, ts)
+extension [T](t: T) def ::(ts: Lst[T]): Lst[T] = Lst.Cns(t, Tail(ts))
 
 @main def test(): Unit =
   import Lst.*
