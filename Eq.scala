@@ -1,6 +1,6 @@
 import scala.collection.mutable.AbstractIterable
 import scala.deriving.*
-import scala.compiletime.{error, erasedValue, summonInline}
+import scala.compiletime.{error, erasedValue, summonFrom, summonInline}
 
 inline def summonInstances[T, Elems <: Tuple]: List[Eq[?]] =
   inline erasedValue[Elems] match
@@ -11,7 +11,7 @@ inline def summonInstances[T, Elems <: Tuple]: List[Eq[?]] =
 inline def deriveOrSummon[T, Elem]: Eq[Elem] =
   inline erasedValue[Elem] match
     case _: T => deriveRec[T, Elem]
-    case _    => summonInline[Eq[Elem]]
+    case _    => summonOrDerive[Elem]
 
 inline def deriveRec[T, Elem]: Eq[Elem] =
   inline erasedValue[T] match
@@ -20,6 +20,15 @@ inline def deriveRec[T, Elem]: Eq[Elem] =
       Eq.derived[Elem](using
         summonInline[Mirror.Of[Elem]]
       ) // recursive derivation
+
+// prefers existing givens so that in case of a recursion
+// somewhere in a nested product, the given result from
+// Eq.derived is used instead of re-deriving
+inline def summonOrDerive[T]: Eq[T] =
+  summonFrom {
+    case eq: Eq[T]       => eq
+    case m: Mirror.Of[T] => Eq.derived(using m)
+  }
 
 trait Eq[T]:
   def eqv(x: T, y: T): Boolean
@@ -47,16 +56,15 @@ object Eq:
 
   inline def derived[T](using m: Mirror.Of[T]): Eq[T] =
     lazy val elemInstances = summonInstances[T, m.MirroredElemTypes]
-    inline m match
+    // make result available as given within the scope of derivation:
+    given eq: Eq[T] = inline m match
       case s: Mirror.SumOf[T]     => eqSum(s, elemInstances)
       case p: Mirror.ProductOf[T] => eqProduct(p, elemInstances)
+    eq
 end Eq
 
 case class Tail[+T](ts: Lst[T])
 
-// compilation fails with:
-// [error] No given instance of type Eq[Tail[T]] was found
-// [error] enum Lst[+T] derives Eq:
 enum Lst[+T] derives Eq:
   case Cns(t: T, tail: Tail[T])
   case Nl
